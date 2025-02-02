@@ -1,44 +1,236 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClusterPuck99 Online</title>
-    <style>
-        body, html {
-            height: 100%;
-            margin: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: #ddd;
-            flex-direction: column;
-        }
-        #gameCanvas {
-            display: none;
-            border: 2px solid black;
-            background-color: #f0f0f0;
-        }
-        #playButton {
-            font-size: 24px;
-            padding: 10px 20px;
-            cursor: pointer;
-        }
-        #scoreboard {
-            text-align: center;
-            font-size: 24px;
-            margin-top: 10px;
-            color: #333;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClusterPuck99 Online - Level Editor</title>
+  <style>
+    /* Basic Reset & Layout */
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      background-color: #ddd;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    /* Top Menu */
+    #topMenu {
+      width: 100%;
+      background: #333;
+      color: #fff;
+      padding: 10px;
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+    }
+    #topMenu button {
+      padding: 8px 12px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      background-color: #555;
+      color: #fff;
+      border-radius: 4px;
+      transition: background 0.3s;
+    }
+    #topMenu button:hover {
+      background-color: #777;
+    }
+    /* Play Button */
+    #playButton {
+      font-size: 24px;
+      padding: 10px 20px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    /* Game Container & Canvas */
+    #gameContainer {
+      position: relative;
+      border: 2px solid #000;
+      background-color: #f0f0f0;
+      margin-top: 10px;
+    }
+    #gameCanvas {
+      display: block;
+      background-color: #f0f0f0;
+      width: 800px;
+      height: 500px;
+    }
+    /* Scoreboard */
+    #scoreboard {
+      font-size: 24px;
+      margin-top: 10px;
+      color: #333;
+    }
+    /* Palette Container */
+    #uiContainer {
+      margin-top: 10px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      justify-content: center;
+    }
+    .paletteItem {
+      cursor: pointer;
+      border: 1px solid #000;
+      background-color: #fff;
+      object-fit: contain;
+      border-radius: 4px;
+    }
+    /* Modal Styles */
+    .modal {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+    }
+    .modal-content {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      width: 300px;
+      text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .modal-content h2 {
+      margin-top: 0;
+    }
+    .modal-content input {
+      width: 90%;
+      padding: 5px;
+      margin: 5px 0;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    .modal-content button {
+      padding: 6px 12px;
+      margin: 5px;
+      cursor: pointer;
+      border: none;
+      background-color: #28a745;
+      color: #fff;
+      border-radius: 4px;
+      transition: background 0.3s;
+    }
+    .modal-content button:hover {
+      background-color: #218838;
+    }
+    /* Library Modal Specific */
+    #libraryModal .modal-content {
+      width: 400px;
+    }
+    #levelsList div {
+      background: #f9f9f9;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      margin: 8px 0;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    #levelsList button {
+      margin-top: 5px;
+      width: 80%;
+    }
+    /* Settings Modal Specific */
+    #settingsModal .modal-content {
+      width: 400px;
+    }
+    #settingsModal label {
+      display: block;
+      margin: 6px 0;
+      text-align: left;
+    }
+  </style>
 </head>
 <body>
-    <div id="container">
-        <button id="playButton">Play</button>
-        <canvas id="gameCanvas" width="600" height="400"></canvas>
-        <div id="scoreboard">Player 1: 0 | Player 2: 0</div>
+  <!-- Login Modal -->
+  <div id="loginModal" class="modal">
+    <div class="modal-content">
+      <h2>Welcome to ClusterPuck99</h2>
+      <input type="email" id="email" placeholder="Email" />
+      <input type="password" id="password" placeholder="Password" />
+      <div>
+        <button id="loginButton">Log In</button>
+        <button id="signupButton">Sign Up</button>
+      </div>
+      <div id="loginError" style="color:red;"></div>
     </div>
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="client.js"></script>
+  </div>
+
+  <!-- Top Menu (visible after login) -->
+  <div id="topMenu" style="display:none;">
+    <span id="welcomeMessage"></span>
+    <button id="saveButton">Save</button>
+    <button id="libraryButton">Library</button>
+    <button id="settingsButton">Settings</button>
+    <button id="logoutButton">Logout</button>
+  </div>
+
+  <!-- Game UI -->
+  <button id="playButton">Play</button>
+  <div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="500"></canvas>
+  </div>
+  <div id="scoreboard">Player 1: 0 | Player 2: 0</div>
+
+  <!-- Palette for Level Editor -->
+  <div id="uiContainer">
+    <img id="palette-spike" class="paletteItem" src="spike.png" alt="Spike" title="Drag to add Spike">
+    <img id="palette-bounce" class="paletteItem" src="bounce.png" alt="Bumper" title="Drag to add Bumper">
+    <img id="palette-boost" class="paletteItem" src="boost.png" alt="Booster" title="Drag to add Booster">
+  </div>
+
+  <!-- Library Modal -->
+  <div id="libraryModal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <h2>Your Levels</h2>
+      <div id="levelsList"></div>
+      <button id="closeLibraryButton">Close</button>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <h2>Level Settings</h2>
+      <label>Map Width: <input type="number" id="settingMapWidth" /></label>
+      <label>Map Height: <input type="number" id="settingMapHeight" /></label>
+      <label>Goal 1 X: <input type="number" id="settingGoal1X" /></label>
+      <label>Goal 1 Y: <input type="number" id="settingGoal1Y" /></label>
+      <label>Goal 1 Width: <input type="number" id="settingGoal1Width" /></label>
+      <label>Goal 1 Height: <input type="number" id="settingGoal1Height" /></label>
+      <label>Goal 2 X: <input type="number" id="settingGoal2X" /></label>
+      <label>Goal 2 Y: <input type="number" id="settingGoal2Y" /></label>
+      <label>Goal 2 Width: <input type="number" id="settingGoal2Width" /></label>
+      <label>Goal 2 Height: <input type="number" id="settingGoal2Height" /></label>
+      <hr>
+      <h3>Palette Item Sizes</h3>
+      <label>Spike Radius: <input type="number" id="settingSpikeRadius" /></label>
+      <label>Bumper Radius: <input type="number" id="settingBumperRadius" /></label>
+      <label>Booster Width: <input type="number" id="settingBoosterWidth" /></label>
+      <label>Booster Height: <input type="number" id="settingBoosterHeight" /></label>
+      <button id="saveSettingsButton">Save Settings</button>
+      <button id="closeSettingsButton">Close</button>
+    </div>
+  </div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+  <!-- Socket.io -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Client code -->
+  <script src="client.js"></script>
 </body>
 </html>
