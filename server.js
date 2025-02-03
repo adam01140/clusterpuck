@@ -19,15 +19,15 @@ let obstacles = [
   { id: obstacleIdCounter++, type: 'bumper', x: 600, y: 200, radius: 20 }
 ];
 
-let goal1 = { x: 0, y: (mapHeight - 120) / 2, width: 10, height: 120, color: 'red' };
-let goal2 = { x: mapWidth - 10, y: (mapHeight - 120) / 2, width: 10, height: 120, color: 'blue' };
+let goal1 = { x: 0, y: Math.round((mapHeight - 120)/2), width: 10, height: 120, color: 'red' };
+let goal2 = { x: mapWidth - 10, y: Math.round((mapHeight - 120)/2), width: 10, height: 120, color: 'blue' };
 
 // --------------------
 // Gameplay State
 // --------------------
 const FRAME_RATE = 1000 / 60;
 let players = {};
-let puck = { x: mapWidth / 2, y: mapHeight / 2, vx: 0, vy: 0, heldBy: null, radius: 10 };
+let puck = { x: mapWidth/2, y: mapHeight/2, vx: 0, vy: 0, heldBy: null, radius: 10 };
 let mousePos = {}; // keyed by socket id
 let playerCount = 0;
 const MAX_PLAYERS = 2;
@@ -46,7 +46,7 @@ function getSpawnPosition(playerNumber) {
   return { x: mapWidth / 2, y: mapHeight / 2 };
 }
 function distance(a, b) {
-  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+  return Math.sqrt((a.x - b.x)**2 + (a.y - b.y)**2);
 }
 
 function handleGoalScoring(playerNumber) {
@@ -112,6 +112,19 @@ function checkGoal() {
   return false;
 }
 
+// New: Light bounce off spikes.
+function checkPuckSpikeCollision() {
+  obstacles.forEach(obs => {
+    if (obs.type === 'spike') {
+      if (!puck.heldBy && distance(puck, obs) < puck.radius + obs.radius) {
+        puck.vx = -puck.vx * 0.8;
+        puck.vy = -puck.vy * 0.8;
+        console.log("Puck hit a spike and bounced lightly.");
+      }
+    }
+  });
+}
+
 function checkObstacleCollisions(player) {
   for (let obs of obstacles) {
     if (obs.type === 'spike') {
@@ -129,9 +142,17 @@ function checkObstacleCollisions(player) {
       }
     } else if (obs.type === 'bumper') {
       if (distance(player, obs) < player.radius + obs.radius) {
-        // Increased bounce multiplier from 4.0 to 6.0
-        player.vx = -player.vx * 6.0;
-        player.vy = -player.vy * 6.0;
+        let v = { x: player.vx, y: player.vy };
+        if (!(Math.abs(v.x) < 0.01 && Math.abs(v.y) < 0.01)) {
+          let cand1 = { x: v.y, y: -v.x };
+          let cand2 = { x: -v.y, y: v.x };
+          let n = { x: player.x - obs.x, y: player.y - obs.y };
+          let dot1 = cand1.x * n.x + cand1.y * n.y;
+          let dot2 = cand2.x * n.x + cand2.y * n.y;
+          let chosen = (dot1 >= dot2) ? cand1 : cand2;
+          player.vx = chosen.x * 6.0;
+          player.vy = chosen.y * 6.0;
+        }
         player.x += player.vx;
         player.y += player.vy;
         console.log(`Player ${player.number.replace('player', 'Player ')} hit a bumper and bounced hard.`);
@@ -153,6 +174,7 @@ function checkObstacleCollisions(player) {
     }
   }
 }
+
 function checkPuckBumperCollision() {
   for (let obs of obstacles) {
     if (obs.type === 'bumper') {
@@ -163,23 +185,31 @@ function checkPuckBumperCollision() {
           let dx = puck.x - obs.x;
           let dy = puck.y - obs.y;
           let ang = Math.atan2(dy, dx);
-          // Increased bounce multiplier from 4.0 to 6.0
           puck.vx = Math.cos(ang) * 6;
           puck.vy = Math.sin(ang) * 6;
           puck.heldBy = null;
         } else {
-          puck.vx = -puck.vx * 6.0;
-          puck.vy = -puck.vy * 6.0;
+          let v = { x: puck.vx, y: puck.vy };
+          if (Math.abs(v.x) < 0.01 && Math.abs(v.y) < 0.01) continue;
+          let cand1 = { x: v.y, y: -v.x };
+          let cand2 = { x: -v.y, y: v.x };
+          let n = { x: puck.x - obs.x, y: puck.y - obs.y };
+          let dot1 = cand1.x * n.x + cand1.y * n.y;
+          let dot2 = cand2.x * n.x + cand2.y * n.y;
+          let chosen = (dot1 >= dot2) ? cand1 : cand2;
+          puck.vx = chosen.x * 6.0;
+          puck.vy = chosen.y * 6.0;
         }
         console.log("Puck hit a bumper and bounced hard.");
       }
     }
   }
 }
+
 function checkPuckPossession() {
   for (let id in players) {
     const player = players[id];
-    if (!player.hasPuck && distance(player, puck) < player.radius + puck.radius) {
+    if (!player.hasPuck && distance(player, puck) < player.radius + puck.radius + 5) {
       puck.heldBy = player.number;
       player.hasPuck = true;
       io.to(id).emit('puckPossession', { hasPuck: true });
@@ -187,6 +217,7 @@ function checkPuckPossession() {
     }
   }
 }
+
 function updatePuckPosition(playerNumber) {
   const player = Object.values(players).find(p => p.number === playerNumber);
   if (player && player.hasPuck && mousePos[player.socketId]) {
@@ -200,7 +231,6 @@ function updatePuckPosition(playerNumber) {
   }
 }
 
-// ---- Obstacle Update ----
 io.on('connection', (socket) => {
   socket.on('updateObstacle', (obstacle) => {
     obstacles = obstacles.map(obs => obs.id === obstacle.id ? obstacle : obs);
@@ -209,7 +239,20 @@ io.on('connection', (socket) => {
   });
 });
 
-// ---- Socket Handling ----
+io.on('connection', (socket) => {
+  socket.on('openLevel', (data) => {
+    mapWidth = data.mapDimensions.width;
+    mapHeight = data.mapDimensions.height;
+    goal1 = data.goal1;
+    goal2 = data.goal2;
+    obstacles = data.obstacles;
+    io.emit('mapDimensions', { width: mapWidth, height: mapHeight });
+    io.emit('updateGoals', { goal1, goal2 });
+    io.emit('currentObstacles', obstacles);
+    console.log("Server state updated from opened level:", data);
+  });
+});
+
 io.on('connection', (socket) => {
   console.log("A player connected:", socket.id);
 
@@ -292,7 +335,6 @@ io.on('connection', (socket) => {
       }
     });
 
-    // ---- New event: Stick the puck to the triangle ----
     socket.on('stickPuck', () => {
       const player = players[socket.id];
       if (player && !player.hasPuck && !puck.heldBy) {
@@ -304,7 +346,6 @@ io.on('connection', (socket) => {
       }
     });
 
-    // ---- Level Editor Events ----
     socket.on('addObstacle', (obstacle) => {
       obstacle.id = obstacleIdCounter++;
       obstacles.push(obstacle);
@@ -345,14 +386,12 @@ io.on('connection', (socket) => {
   });
 });
 
-// ---- Main Game Update Loop ----
 setInterval(() => {
   if (!puck.heldBy) {
     puck.x += puck.vx;
     puck.y += puck.vy;
     puck.vx *= 0.99;
     puck.vy *= 0.99;
-    // ---- NEW: Cap the puck's speed ----
     const MAX_PUCK_SPEED = 15;
     let puckSpeed = Math.sqrt(puck.vx * puck.vx + puck.vy * puck.vy);
     if (puckSpeed > MAX_PUCK_SPEED) {
@@ -375,7 +414,8 @@ setInterval(() => {
     updatePuckPosition(puck.heldBy);
   }
   checkPuckBumperCollision();
-
+  checkPuckSpikeCollision();
+  
   for (let id in players) {
     const player = players[id];
     player.x += player.vx;
@@ -418,7 +458,7 @@ setInterval(() => {
     checkObstacleCollisions(player);
     io.emit('playerMoved', { id: id, x: player.x, y: player.y });
     if (!player.hasPuck) {
-      if (distance(player, puck) < player.radius + puck.radius) {
+      if (distance(player, puck) < player.radius + puck.radius + 5) {
         puck.heldBy = player.number;
         player.hasPuck = true;
         io.to(id).emit('puckPossession', { hasPuck: true });

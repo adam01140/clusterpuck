@@ -50,6 +50,8 @@
     /* Game Container & Canvas */
     #gameContainer {
       position: relative;
+      width: 100%;
+      height: calc(100% - 160px); /* adjust height to account for top menu and scoreboard */
       border: 2px solid #000;
       background-color: #f0f0f0;
       margin-top: 10px;
@@ -57,8 +59,8 @@
     #gameCanvas {
       display: block;
       background-color: #f0f0f0;
-      width: 800px;
-      height: 500px;
+      width: 100%;
+      height: 100%;
     }
     /* Scoreboard */
     #scoreboard {
@@ -80,6 +82,8 @@
       background-color: #fff;
       object-fit: contain;
       border-radius: 4px;
+      max-width: 70px;
+      max-height: 70px;
     }
     /* Modal Styles */
     .modal {
@@ -99,6 +103,8 @@
       width: 300px;
       text-align: center;
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      max-height: 80vh;
+      overflow-y: auto;
     }
     .modal-content h2 {
       margin-top: 0;
@@ -177,9 +183,9 @@
   </div>
 
   <!-- Game UI -->
-  <button id="playButton">Play</button>
+  <button id="playButton">Build</button>
   <div id="gameContainer">
-    <canvas id="gameCanvas" width="800" height="500"></canvas>
+    <canvas id="gameCanvas"></canvas>
   </div>
   <div id="scoreboard">Player 1: 0 | Player 2: 0</div>
 
@@ -188,6 +194,8 @@
     <img id="palette-spike" class="paletteItem" src="spike.png" alt="Spike" title="Drag to add Spike">
     <img id="palette-bounce" class="paletteItem" src="bounce.png" alt="Bumper" title="Drag to add Bumper">
     <img id="palette-boost" class="paletteItem" src="boost.png" alt="Booster" title="Drag to add Booster">
+    <!-- New Wall Palette Item -->
+    <img id="palette-wall" class="paletteItem" src="wall.png" alt="Wall" title="Drag to add Wall">
   </div>
 
   <!-- Library Modal -->
@@ -199,7 +207,7 @@
     </div>
   </div>
 
-  <!-- Settings Modal -->
+  <!-- Settings Modal (with Grid toggle) -->
   <div id="settingsModal" class="modal" style="display:none;">
     <div class="modal-content">
       <h2>Level Settings</h2>
@@ -219,6 +227,11 @@
       <label>Bumper Radius: <input type="number" id="settingBumperRadius" /></label>
       <label>Booster Width: <input type="number" id="settingBoosterWidth" /></label>
       <label>Booster Height: <input type="number" id="settingBoosterHeight" /></label>
+      <!-- New grid toggle checkbox -->
+      <label>
+        <input type="checkbox" id="settingGrid" checked>
+        Grid
+      </label>
       <button id="saveSettingsButton">Save Settings</button>
       <button id="closeSettingsButton">Close</button>
     </div>
