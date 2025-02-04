@@ -11,6 +11,7 @@ const io = new Server(server);
 // --------------------------
 let mapWidth = 800;
 let mapHeight = 600;
+let borderEnabled = false; // whether map border collisions are enabled
 let obstacleIdCounter = 100;
 let obstacles = [
   { id: obstacleIdCounter++, type: 'spike', x: 400, y: 150, radius: 20 },
@@ -47,6 +48,93 @@ function getSpawnPosition(playerNumber) {
 }
 function distance(a, b) {
   return Math.sqrt((a.x - b.x)**2 + (a.y - b.y)**2);
+}
+
+// --- New: Rectangular collision detection for players ---
+function rectsCollide(p1, p2) {
+  return (
+    p1.x - p1.radius < p2.x + p2.radius &&
+    p1.x + p1.radius > p2.x - p2.radius &&
+    p1.y - p1.radius < p2.y + p2.radius &&
+    p1.y + p1.radius > p2.y - p2.radius
+  );
+}
+function resolvePlayerCollision(p1, p2) {
+  const dx = p1.x - p2.x;
+  const dy = p1.y - p2.y;
+  const overlapX = (p1.radius + p2.radius) - Math.abs(dx);
+  const overlapY = (p1.radius + p2.radius) - Math.abs(dy);
+  if (overlapX < overlapY) {
+    const separation = overlapX / 2;
+    if (dx > 0) {
+      p1.x += separation;
+      p2.x -= separation;
+    } else {
+      p1.x -= separation;
+      p2.x += separation;
+    }
+  } else {
+    const separation = overlapY / 2;
+    if (dy > 0) {
+      p1.y += separation;
+      p2.y -= separation;
+    } else {
+      p1.y -= separation;
+      p2.y += separation;
+    }
+  }
+}
+
+// --- New: Resolve collision between a player and a wall obstacle ---
+function resolveWallCollisionForPlayer(player, wall) {
+  const cx = wall.x + wall.width / 2;
+  const cy = wall.y + wall.height / 2;
+  const theta = wall.rotation * Math.PI / 180;
+  const dx = player.x - cx;
+  const dy = player.y - cy;
+  const localX = Math.cos(theta) * dx + Math.sin(theta) * dy;
+  const localY = -Math.sin(theta) * dx + Math.cos(theta) * dy;
+  const halfPlayer = player.radius;
+  const overlapX = (wall.width/2 + halfPlayer) - Math.abs(localX);
+  const overlapY = (wall.height/2 + halfPlayer) - Math.abs(localY);
+  if (overlapX > 0 && overlapY > 0) {
+    if (overlapX < overlapY) {
+      const sign = localX >= 0 ? 1 : -1;
+      const pushLocalX = overlapX * sign;
+      const pushX = Math.cos(theta) * pushLocalX;
+      const pushY = Math.sin(theta) * pushLocalX;
+      player.x += pushX;
+      player.y += pushY;
+    } else {
+      const sign = localY >= 0 ? 1 : -1;
+      const pushLocalY = overlapY * sign;
+      const pushX = -Math.sin(theta) * pushLocalY;
+      const pushY = Math.cos(theta) * pushLocalY;
+      player.x += pushX;
+      player.y += pushY;
+    }
+  }
+}
+
+// --- Puck–Wall Collision ---
+function checkPuckWallCollision() {
+  obstacles.forEach(obs => {
+    if (obs.type === 'wall') {
+      const puckBox = { x: puck.x - puck.radius, y: puck.y - puck.radius, width: puck.radius * 2, height: puck.radius * 2 };
+      const wallBox = { x: obs.x, y: obs.y, width: obs.width, height: obs.height };
+      const collides = (puckBox.x < wallBox.x + wallBox.width &&
+                        puckBox.x + puckBox.width > wallBox.x &&
+                        puckBox.y < wallBox.y + wallBox.height &&
+                        puckBox.y + puckBox.height > wallBox.y);
+      if (collides) {
+        if (Math.abs(obs.rotation % 180) < 45 || Math.abs(obs.rotation % 180) > 135) {
+          puck.vy = -puck.vy;
+        } else {
+          puck.vx = -puck.vx;
+        }
+      }
+    }
+  });
 }
 
 function handleGoalScoring(playerNumber) {
@@ -171,6 +259,8 @@ function checkObstacleCollisions(player) {
           console.log(`Player ${player.number.replace('player', 'Player ')} hit a booster and got a speed boost.`);
         }
       }
+    } else if (obs.type === 'wall') {
+      resolveWallCollisionForPlayer(player, obs);
     }
   }
 }
@@ -246,6 +336,7 @@ io.on('connection', (socket) => {
     goal1 = data.goal1;
     goal2 = data.goal2;
     obstacles = data.obstacles;
+    if (data.mapBorderEnabled !== undefined) borderEnabled = data.mapBorderEnabled;
     io.emit('mapDimensions', { width: mapWidth, height: mapHeight });
     io.emit('updateGoals', { goal1, goal2 });
     io.emit('currentObstacles', obstacles);
@@ -368,6 +459,7 @@ io.on('connection', (socket) => {
       mapHeight = data.mapDimensions.height;
       goal1 = data.goal1;
       goal2 = data.goal2;
+      if (data.mapBorderEnabled !== undefined) borderEnabled = data.mapBorderEnabled;
       io.emit('mapDimensions', { width: mapWidth, height: mapHeight });
       io.emit('updateGoals', { goal1, goal2 });
       console.log("Level settings updated:", data);
@@ -400,13 +492,15 @@ setInterval(() => {
       puck.vy *= factor;
     }
     if (!checkGoal()) {
-      if (puck.x < puck.radius || puck.x > mapWidth - puck.radius) {
-        puck.vx = -puck.vx;
-        puck.x = Math.max(puck.radius, Math.min(puck.x, mapWidth - puck.radius));
-      }
-      if (puck.y < puck.radius || puck.y > mapHeight - puck.radius) {
-        puck.vy = -puck.vy;
-        puck.y = Math.max(puck.radius, Math.min(puck.y, mapHeight - puck.radius));
+      if (borderEnabled) {
+        if (puck.x < puck.radius || puck.x > mapWidth - puck.radius) {
+          puck.vx = -puck.vx;
+          puck.x = Math.max(puck.radius, Math.min(puck.x, mapWidth - puck.radius));
+        }
+        if (puck.y < puck.radius || puck.y > mapHeight - puck.radius) {
+          puck.vy = -puck.vy;
+          puck.y = Math.max(puck.radius, Math.min(puck.y, mapHeight - puck.radius));
+        }
       }
       checkPuckPossession();
     }
@@ -415,6 +509,7 @@ setInterval(() => {
   }
   checkPuckBumperCollision();
   checkPuckSpikeCollision();
+  checkPuckWallCollision();
   
   for (let id in players) {
     const player = players[id];
@@ -429,28 +524,16 @@ setInterval(() => {
       player.vx *= factor;
       player.vy *= factor;
     }
-    player.x = Math.max(player.radius, Math.min(player.x, mapWidth - player.radius));
-    player.y = Math.max(player.radius, Math.min(player.y, mapHeight - player.radius));
+    if (borderEnabled) {
+      player.x = Math.max(player.radius, Math.min(player.x, mapWidth - player.radius));
+      player.y = Math.max(player.radius, Math.min(player.y, mapHeight - player.radius));
+    }
+    // Check rectangular collision with other players
     for (let otherId in players) {
       if (otherId === id) continue;
       const otherPlayer = players[otherId];
-      const d = distance(player, otherPlayer);
-      const minDist = player.radius + otherPlayer.radius;
-      if (d < minDist) {
-        const overlap = (minDist - d) / 2;
-        const nx = (player.x - otherPlayer.x) / d;
-        const ny = (player.y - otherPlayer.y) / d;
-        player.x += nx * overlap;
-        player.y += ny * overlap;
-        otherPlayer.x -= nx * overlap;
-        otherPlayer.y -= ny * overlap;
-        const damping = 0.5;
-        const dvx = player.vx - otherPlayer.vx;
-        const dvy = player.vy - otherPlayer.vy;
-        player.vx -= (damping * dvx) / 2;
-        player.vy -= (damping * dvy) / 2;
-        otherPlayer.vx += (damping * dvx) / 2;
-        otherPlayer.vy += (damping * dvy) / 2;
+      if (rectsCollide(player, otherPlayer)) {
+        resolvePlayerCollision(player, otherPlayer);
         io.emit('playerMoved', { id: id, x: player.x, y: player.y });
         io.emit('playerMoved', { id: otherId, x: otherPlayer.x, y: otherPlayer.y });
       }

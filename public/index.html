@@ -50,8 +50,8 @@
     /* Game Container & Canvas */
     #gameContainer {
       position: relative;
-      width: 100%;
-      height: calc(100% - 160px); /* adjust height to account for top menu and scoreboard */
+      width: calc(100% - 150px); /* a little less than full width */
+      height: calc(100% - 160px); /* adjust height to account for menu/scoreboard */
       border: 2px solid #000;
       background-color: #f0f0f0;
       margin-top: 10px;
@@ -207,7 +207,7 @@
     </div>
   </div>
 
-  <!-- Settings Modal (with Grid toggle) -->
+  <!-- Settings Modal (with Grid and Map Border toggles) -->
   <div id="settingsModal" class="modal" style="display:none;">
     <div class="modal-content">
       <h2>Level Settings</h2>
@@ -231,6 +231,11 @@
       <label>
         <input type="checkbox" id="settingGrid" checked>
         Grid
+      </label>
+      <!-- New Map Border toggle checkbox -->
+      <label>
+        <input type="checkbox" id="settingMapBorder">
+        Map Border
       </label>
       <button id="saveSettingsButton">Save Settings</button>
       <button id="closeSettingsButton">Close</button>

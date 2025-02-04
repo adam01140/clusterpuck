@@ -76,11 +76,10 @@ const playButton = document.getElementById('playButton');
 const scoreboard = document.getElementById('scoreboard');
 
 // --- Global Variables ---
-// Declare mapDimensions before use.
 let mapDimensions = { width: 0, height: 0 };
+let mapBorderEnabled = false; // controlled via settings
 
 function resizeCanvas() {
-  // Make the canvas a little less wide than the screen:
   canvas.width = window.innerWidth - 150;
   canvas.height = window.innerHeight - 150;
   mapDimensions.width = canvas.width;
@@ -98,16 +97,16 @@ let isPlaying = false;
 let score = { player1: 0, player2: 0 };
 
 // --- Level Editor State ---
-let obstacles = []; // set from server
+let obstacles = [];
 let draggingNewObstacle = null;
 let contextMenuObstacle = null;
 let draggedObstacle = null;
-let draggedGoal = null;  // for dragging goals
+let draggedGoal = null;
 
 // --- Save/Load behavior ---
-let currentLevelKey = null; // if opened from library, update that level
+let currentLevelKey = null;
 
-// --- Palette Settings (defaults for new obstacles) ---
+// --- Palette Settings ---
 let paletteSettings = {
   spikeRadius: 20,
   bumperRadius: 20,
@@ -124,9 +123,9 @@ let initialOffset = { x: 0, y: 0 };
 
 // --- Grid Settings ---
 const gridSpacing = 20;
-let gridVisible = true; // Toggle via settings
+let gridVisible = true;
 
-// --- Goal Settings (movable red/blue goals) ---
+// --- Goal Settings ---
 let goal1 = { x: 0, y: Math.round((mapDimensions.height - 120)/2), width: 10, height: 120, color: 'red' };
 let goal2 = { x: mapDimensions.width - 10, y: Math.round((mapDimensions.height - 120)/2), width: 10, height: 120, color: 'blue' };
 
@@ -134,21 +133,19 @@ const keys = {};
 document.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
 document.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-// --- Load Obstacle Images ---
+// --- Load Images ---
 const spikeImg = new Image();
 spikeImg.src = "spike.png";
 const bounceImg = new Image();
 bounceImg.src = "bounce.png";
 const boostImg = new Image();
 boostImg.src = "boost.png";
-
-// --- Load Player Sprites ---
 const playerImg = new Image();
-playerImg.src = "player.png";      // for player1
+playerImg.src = "player.png";
 const player2Img = new Image();
-player2Img.src = "player2.png";      // for player2
+player2Img.src = "player2.png";
 
-// --- Create a Checkered Pattern for the Puck ---
+// --- Puck Pattern ---
 const patternCanvas = document.createElement('canvas');
 patternCanvas.width = 10;
 patternCanvas.height = 10;
@@ -161,13 +158,15 @@ pctx.fillRect(5, 5, 5, 5);
 const puckPattern = ctx.createPattern(patternCanvas, 'repeat');
 
 // --- Palette Setup ---
+// Only respond to left-click (button===0) for placement; right-click rotates wall pieces.
 const paletteSpike = document.getElementById('palette-spike');
 const paletteBounce = document.getElementById('palette-bounce');
 const paletteBoost = document.getElementById('palette-boost');
 const paletteWall = document.getElementById('palette-wall');
 
 if (paletteSpike) {
-  paletteSpike.addEventListener('mousedown', () => {
+  paletteSpike.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     draggingNewObstacle = { type: 'spike', radius: paletteSettings.spikeRadius, x: 0, y: 0 };
   });
   paletteSpike.addEventListener('contextmenu', (e) => {
@@ -177,7 +176,8 @@ if (paletteSpike) {
   });
 }
 if (paletteBounce) {
-  paletteBounce.addEventListener('mousedown', () => {
+  paletteBounce.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     draggingNewObstacle = { type: 'bumper', radius: paletteSettings.bumperRadius, x: 0, y: 0 };
   });
   paletteBounce.addEventListener('contextmenu', (e) => {
@@ -187,7 +187,8 @@ if (paletteBounce) {
   });
 }
 if (paletteBoost) {
-  paletteBoost.addEventListener('mousedown', () => {
+  paletteBoost.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     draggingNewObstacle = { type: 'booster', width: paletteSettings.boosterWidth, height: paletteSettings.boosterHeight, x: 0, y: 0 };
   });
   paletteBoost.addEventListener('contextmenu', (e) => {
@@ -201,26 +202,37 @@ if (paletteBoost) {
   });
 }
 if (paletteWall) {
-  paletteWall.addEventListener('mousedown', () => {
-    // Wall: one grid unit long and very thin.
+  paletteWall.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
     draggingNewObstacle = { type: 'wall', width: gridSpacing, height: 5, rotation: 0, x: 0, y: 0 };
   });
   paletteWall.addEventListener('contextmenu', (e) => {
     e.preventDefault();
+    // Right-click rotates the wall piece by 45° without placing it.
     if (draggingNewObstacle && draggingNewObstacle.type === 'wall') {
-      const temp = draggingNewObstacle.width;
-      draggingNewObstacle.width = draggingNewObstacle.height;
-      draggingNewObstacle.height = temp;
-      draggingNewObstacle.rotation = (draggingNewObstacle.rotation + 90) % 180;
+      draggingNewObstacle.rotation = (draggingNewObstacle.rotation + 45) % 360;
     }
   });
 }
 
+// --- Continuous Placement and Right-click filtering ---
+// Do not clear draggingNewObstacle on left-click mouseup if placement was made.
+canvas.addEventListener('mousedown', (e) => {
+  // Only respond to left-click events on the canvas.
+  if (e.button !== 0) return;
+  // (Handled in the canvas mousedown handler below.)
+});
+
+// Also, if the user clicks outside the canvas and palette, unselect the dragging item.
+document.addEventListener('mousedown', (e) => {
+  if (!canvas.contains(e.target) && !e.target.classList.contains('paletteItem')) {
+    draggingNewObstacle = null;
+  }
+});
+
 // --- Charge Shot Variables ---
 let isChargingShot = false;
 let shotChargeStartTime = null;
-
-// --- Prevent Immediate Pickup After Shooting ---
 let justShot = false;
 
 // --- Utility Functions ---
@@ -235,8 +247,7 @@ function distance(a, b) {
 }
 
 // --------------------------
-// Draw Grid Function
-// --------------------------
+// Draw Grid Function (drawn in world space so it scales)
 function drawGrid() {
   ctx.save();
   ctx.strokeStyle = "#ddd";
@@ -257,14 +268,12 @@ function drawGrid() {
 }
 
 // --------------------------
-// Unified Mousedown Handler
+// Canvas Mouse Handlers
 // --------------------------
 canvas.addEventListener('mousedown', (e) => {
-  if (e.button !== 0) return;
+  if (e.button !== 0) return; // Only process left-click
   const rect = canvas.getBoundingClientRect();
-  const mouseX = e.clientX;
-  const mouseY = e.clientY;
-  const worldPos = toWorldCoords(mouseX - rect.left, mouseY - rect.top);
+  const worldPos = toWorldCoords(e.clientX - rect.left, e.clientY - rect.top);
   
   if (players[localPlayerId] && players[localPlayerId].hasPuck) {
     isChargingShot = true;
@@ -285,16 +294,13 @@ canvas.addEventListener('mousedown', (e) => {
   initialOffset = { x: offsetX, y: offsetY };
 });
 
-// --------------------------
-// Mouseup Handler
-// --------------------------
 canvas.addEventListener('mouseup', (e) => {
+  if (e.button !== 0) return; // Only process left-click
   if (draggingNewObstacle) {
-    // Snap the new obstacle position to the grid.
     draggingNewObstacle.x = snapToGrid(draggingNewObstacle.x);
     draggingNewObstacle.y = snapToGrid(draggingNewObstacle.y);
     socket.emit('addObstacle', draggingNewObstacle);
-    // Do NOT clear draggingNewObstacle so the user may place more instances.
+    // Do not clear draggingNewObstacle so the user may continue placing it.
   }
   if (isPanning) {
     offsetX = snapToGrid(offsetX);
@@ -342,9 +348,6 @@ canvas.addEventListener('mouseup', (e) => {
   }
 });
 
-// --------------------------
-// Other Mouse Event Listeners
-// --------------------------
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
   const canvasX = e.clientX - rect.left;
@@ -419,14 +422,18 @@ function draw() {
   ctx.save();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  if (gridVisible) drawGrid();
-  
+  // Apply pan and zoom first so that grid and all objects scale together.
   ctx.translate(offsetX, offsetY);
   ctx.scale(zoom, zoom);
-
+  
+  if (gridVisible) drawGrid();
+  
+  // Draw map border (if enabled)
   ctx.lineWidth = 5;
   ctx.strokeStyle = 'black';
-  ctx.strokeRect(0, 0, mapDimensions.width, mapDimensions.height);
+  if (mapBorderEnabled) {
+    ctx.strokeRect(0, 0, mapDimensions.width, mapDimensions.height);
+  }
   
   ctx.fillStyle = goal1.color;
   ctx.fillRect(goal1.x, goal1.y, goal1.width, goal1.height);
@@ -470,6 +477,7 @@ function draw() {
 
   for (let id in players) {
     const player = players[id];
+    // Draw players as rectangles for collision (using radius as half width/height)
     if (player.number === "player1") {
       ctx.drawImage(playerImg, player.x - player.radius, player.y - player.radius, player.radius*2, player.radius*2);
     } else if (player.number === "player2") {
@@ -477,7 +485,7 @@ function draw() {
     } else {
       ctx.fillStyle = (player.id === localPlayerId) ? 'green' : 'blue';
       ctx.beginPath();
-      ctx.arc(player.x, player.y, player.radius, 0, 2 * Math.PI);
+      ctx.rect(player.x - player.radius, player.y - player.radius, player.radius * 2, player.radius * 2);
       ctx.fill();
     }
     ctx.fillStyle = 'white';
@@ -661,10 +669,7 @@ transformOption.addEventListener('click', () => {
 
 rotateOption.addEventListener('click', () => {
   if (contextMenuObstacle && contextMenuObstacle.type === 'wall') {
-    const temp = contextMenuObstacle.width;
-    contextMenuObstacle.width = contextMenuObstacle.height;
-    contextMenuObstacle.height = temp;
-    contextMenuObstacle.rotation = (contextMenuObstacle.rotation + 90) % 180;
+    contextMenuObstacle.rotation = (contextMenuObstacle.rotation + 45) % 360;
     socket.emit('updateObstacle', contextMenuObstacle);
     hideContextMenu();
   }
@@ -674,6 +679,7 @@ canvas.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   const rect = canvas.getBoundingClientRect();
   const worldPos = toWorldCoords(e.clientX - rect.left, e.clientY - rect.top);
+  contextMenuObstacle = null;
   for (let obs of obstacles) {
     if (obs.type === 'booster') {
       if (worldPos.x >= obs.x && worldPos.x <= obs.x + obs.width &&
@@ -695,13 +701,8 @@ canvas.addEventListener('contextmenu', (e) => {
     }
   }
   if (!contextMenuObstacle) {
-    if (worldPos.x >= goal1.x && worldPos.x <= goal1.x + goal1.width &&
-        worldPos.y >= goal1.y && worldPos.y <= goal1.y + goal1.height) {
-      contextMenuObstacle = { type: 'goal', id: 'goal1', width: goal1.width, height: goal1.height };
-    } else if (worldPos.x >= goal2.x && worldPos.x <= goal2.x + goal2.width &&
-               worldPos.y >= goal2.y && worldPos.y <= goal2.y + goal2.height) {
-      contextMenuObstacle = { type: 'goal', id: 'goal2', width: goal2.width, height: goal2.height };
-    }
+    hideContextMenu();
+    return;
   }
   if (contextMenuObstacle && contextMenuObstacle.type === 'wall') {
     rotateOption.style.display = 'block';
@@ -861,6 +862,7 @@ settingsButton.addEventListener('click', () => {
   document.getElementById('settingBoosterWidth').value = paletteSettings.boosterWidth;
   document.getElementById('settingBoosterHeight').value = paletteSettings.boosterHeight;
   document.getElementById('settingGrid').checked = gridVisible;
+  document.getElementById('settingMapBorder').checked = mapBorderEnabled;
   settingsModal.style.display = "flex";
 });
 
@@ -882,6 +884,7 @@ saveSettingsButton.addEventListener('click', () => {
   paletteSettings.boosterWidth = Math.round(Number(document.getElementById('settingBoosterWidth').value));
   paletteSettings.boosterHeight = Math.round(Number(document.getElementById('settingBoosterHeight').value));
   gridVisible = document.getElementById('settingGrid').checked;
-  socket.emit('updateLevelSettings', { mapDimensions, goal1, goal2 });
+  mapBorderEnabled = document.getElementById('settingMapBorder').checked;
+  socket.emit('updateLevelSettings', { mapDimensions, goal1, goal2, mapBorderEnabled });
   settingsModal.style.display = "none";
 });
